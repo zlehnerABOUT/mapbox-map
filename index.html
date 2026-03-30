@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>PAC Provider Network Map</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Mapbox CSS -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+
+  <style>
+    body { margin: 0; }
+    #map {
+      width: 100%;
+      height: 100vh;
+    }
+  </style>
+</head>
+
+<body>
+<div id="map"></div>
+
+<!-- Mapbox JS -->
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+
+<script>
+mapboxgl.accessToken = 'pk.eyJ1IjoiemxlaG5lciIsImEiOiJjbW5kaTk2M2IxaHVsMnBwcG5keGd3d2lsIn0.ge4_aEBqZumycpCVEJc75g';
+
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/light-v11',
+  center: [-99.23, 38.62],
+  zoom: 3.8
+});
+
+map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+let activePopup = null;
+const providerCountsByState = {};
+
+const stateAbbrevToName = {
+  AL: 'ALABAMA',
+  AK: 'ALASKA',
+  AZ: 'ARIZONA',
+  AR: 'ARKANSAS',
+  CA: 'CALIFORNIA',
+  CO: 'COLORADO',
+  CT: 'CONNECTICUT',
+  DE: 'DELAWARE',
+  FL: 'FLORIDA',
+  GA: 'GEORGIA',
+  HI: 'HAWAII',
+  ID: 'IDAHO',
+  IL: 'ILLINOIS',
+  IN: 'INDIANA',
+  IA: 'IOWA',
+  KS: 'KANSAS',
+  KY: 'KENTUCKY',
+  LA: 'LOUISIANA',
+  ME: 'MAINE',
+  MD: 'MARYLAND',
+  MA: 'MASSACHUSETTS',
+  MI: 'MICHIGAN',
+  MN: 'MINNESOTA',
+  MS: 'MISSISSIPPI',
+  MO: 'MISSOURI',
+  MT: 'MONTANA',
+  NE: 'NEBRASKA',
+  NV: 'NEVADA',
+  NH: 'NEW HAMPSHIRE',
+  NJ: 'NEW JERSEY',
+  NM: 'NEW MEXICO',
+  NY: 'NEW YORK',
+  NC: 'NORTH CAROLINA',
+  ND: 'NORTH DAKOTA',
+  OH: 'OHIO',
+  OK: 'OKLAHOMA',
+  OR: 'OREGON',
+  PA: 'PENNSYLVANIA',
+  RI: 'RHODE ISLAND',
+  SC: 'SOUTH CAROLINA',
+  SD: 'SOUTH DAKOTA',
+  TN: 'TENNESSEE',
+  TX: 'TEXAS',
+  UT: 'UTAH',
+  VT: 'VERMONT',
+  VA: 'VIRGINIA',
+  WA: 'WASHINGTON',
+  WV: 'WEST VIRGINIA',
+  WI: 'WISCONSIN',
+  WY: 'WYOMING',
+  DC: 'DISTRICT OF COLUMBIA'
+};
+
+function normalizeState(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeFacilityState(value) {
+  const raw = normalizeState(value);
+  return stateAbbrevToName[raw] || raw;
+}
+
+function getStateNameFromStateFeature(p) {
+  return (
+    p.state ||
+    p.name ||
+    p.STATE ||
+    p.State ||
+    p['State Name'] ||
+    'State'
+  );
+}
+
+function showSinglePopup(lngLat, html) {
+  if (activePopup) {
+    activePopup.remove();
+  }
+
+  activePopup = new mapboxgl.Popup({
+    closeButton: true,
+    closeOnClick: true
+  })
+    .setLngLat(lngLat)
+    .setHTML(html)
+    .addTo(map);
+
+  activePopup.on('close', () => {
+    activePopup = null;
+  });
+}
+
+map.on('load', () => {
+  map.addSource('pac-network', {
+    type: 'vector',
+    url: 'mapbox://zlehner.dfcco5cy,zlehner.3n3wyt85'
+  });
+
+  map.addLayer({
+    id: 'states-fill',
+    type: 'fill',
+    source: 'pac-network',
+    'source-layer': 'State_Summary_Mapbox_Polygons-6dw3hp',
+    paint: {
+      'fill-color': [
+        'case',
+        ['boolean', ['feature-state', 'hover'], false],
+        '#bfc7d5',
+        '#d9d9d9'
+      ],
+      'fill-opacity': 0.45
+    }
+  });
+
+  map.addLayer({
+    id: 'states-outline',
+    type: 'line',
+    source: 'pac-network',
+    'source-layer': 'State_Summary_Mapbox_Polygons-6dw3hp',
+    paint: {
+      'line-color': '#7a7a7a',
+      'line-width': 1
+    }
+  });
+
+  map.addLayer({
+    id: 'pac-dots',
+    type: 'circle',
+    source: 'pac-network',
+    'source-layer': 'Fixed_Upload_PAC_Network_-1uzuqv',
+    maxzoom: 8,
+    paint: {
+      'circle-color': '#ae1f6e',
+      'circle-radius': 4,
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 1
+    }
+  });
+
+  map.once('idle', () => {
+    const dotFeatures = map.querySourceFeatures('pac-network', {
+      sourceLayer: 'Fixed_Upload_PAC_Network_-1uzuqv'
+    });
+
+    if (dotFeatures.length > 0) {
+      const bounds = new mapboxgl.LngLatBounds();
+
+      dotFeatures.forEach((feature) => {
+        const coords = feature.geometry.coordinates;
+        if (Array.isArray(coords) && coords.length === 2) {
+          bounds.extend(coords);
+        }
+      });
+
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds, { padding: 40, maxZoom: 8 });
+      }
+    }
+
+    Object.keys(providerCountsByState).forEach((key) => delete providerCountsByState[key]);
+
+    dotFeatures.forEach((feature) => {
+      const p = feature.properties || {};
+      const normalizedState = normalizeFacilityState(p['Facility State']);
+      if (!normalizedState) return;
+
+      providerCountsByState[normalizedState] = (providerCountsByState[normalizedState] || 0) + 1;
+    });
+  });
+
+  function getProviderCountForState(stateName) {
+    const normalized = normalizeState(stateName);
+    return providerCountsByState[normalized] || 0;
+  }
+
+  map.on('click', 'states-fill', (e) => {
+    const p = e.features[0].properties || {};
+    const stateName = getStateNameFromStateFeature(p);
+    const providerCount = getProviderCountForState(stateName);
+
+    showSinglePopup(
+      e.lngLat,
+      `
+        <div style="font-family: Arial, sans-serif; font-size: 13px; line-height: 1.5;">
+          <div style="font-size: 14px; font-weight: 700; margin-bottom: 6px;">
+            ${stateName}
+          </div>
+          <div><strong># of Providers:</strong> ${providerCount}</div>
+        </div>
+      `
+    );
+  });
+
+  map.on('click', 'pac-dots', (e) => {
+    const p = e.features[0].properties || {};
+
+    const facilityName = p['Facility Name'] || 'Facility';
+    const stateName = p['Facility State'] || 'Unknown';
+    const facilityType =
+      p['Facilitytype Name'] ||
+      p['Facility Type'] ||
+      p['Provider Type'] ||
+      'Unknown';
+    const providerCount = getProviderCountForState(normalizeFacilityState(stateName));
+
+    showSinglePopup(
+      e.lngLat,
+      `
+        <div style="font-family: Arial, sans-serif; font-size: 13px; line-height: 1.5;">
+          <div style="font-size: 14px; font-weight: 700; margin-bottom: 6px;">
+            ${facilityName}
+          </div>
+          <div><strong>State:</strong> ${stateName}</div>
+          <div><strong>Facility Type:</strong> ${facilityType}</div>
+          <div><strong># of Providers:</strong> ${providerCount}</div>
+        </div>
+      `
+    );
+  });
+
+  map.on('mouseenter', 'pac-dots', () => {
+    map.getCanvas().style.cursor = 'pointer';
+  });
+
+  map.on('mouseleave', 'pac-dots', () => {
+    map.getCanvas().style.cursor = '';
+  });
+
+  map.on('mouseenter', 'states-fill', () => {
+    map.getCanvas().style.cursor = 'pointer';
+  });
+
+  map.on('mouseleave', 'states-fill', () => {
+    map.getCanvas().style.cursor = '';
+  });
+
+  let hoveredStateId = null;
+
+  map.on('mousemove', 'states-fill', (e) => {
+    if (!e.features.length) return;
+
+    const id = e.features[0].id;
+    if (id === undefined || id === null) return;
+
+    if (hoveredStateId !== null) {
+      map.setFeatureState(
+        {
+          source: 'pac-network',
+          sourceLayer: 'State_Summary_Mapbox_Polygons-6dw3hp',
+          id: hoveredStateId
+        },
+        { hover: false }
+      );
+    }
+
+    hoveredStateId = id;
+
+    map.setFeatureState(
+      {
+        source: 'pac-network',
+        sourceLayer: 'State_Summary_Mapbox_Polygons-6dw3hp',
+        id: hoveredStateId
+      },
+      { hover: true }
+    );
+  });
+
+  map.on('mouseleave', 'states-fill', () => {
+    if (hoveredStateId !== null) {
+      map.setFeatureState(
+        {
+          source: 'pac-network',
+          sourceLayer: 'State_Summary_Mapbox_Polygons-6dw3hp',
+          id: hoveredStateId
+        },
+        { hover: false }
+      );
+    }
+
+    hoveredStateId = null;
+  });
+});
+</script>
+
+</body>
+</html>
